@@ -143,7 +143,6 @@ int main(int argc, char *argv[]) {
     tcp_task.interface[sizeof(tcp_task.interface) - 1] = '\0';
     tcp_task.is_ipv6 = config.is_ipv6;
     /* Inicializace výsledku jako "unknown" (může se nepoužívat, jelikož výsledek se ukládá do pole) */
-    strcpy(tcp_task.result, "unknown");
     
     /* Vytvoříme pole pro porty, které chceme skenovat. Stav výchozí je nastaven na FILTERED. */
     tcp_task.num_ports = config.tcp_count;
