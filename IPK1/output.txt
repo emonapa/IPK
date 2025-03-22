@@ -1,0 +1,180 @@
+IP ADRESA WTF:____142.251.37.110
+[DEBUG] BPF filter: ip6 and tcp and src host 142.251.37.110 and dst port 1025
+Cekam do: 1742616693 s, 589587862 ns
+Pocet portu na prozkoumani: 2
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+TADY SNAD JO NE
+[DEBUG] BPF filter: ip6 and tcp and src host 142.251.37.110 and dst port 1025
+Cekam do: 1742616694 s, 622284023 ns
+Pocet portu na prozkoumani: 2
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+142.251.37.110 80 tcp filtered
+142.251.37.110 81 tcp filtered
+IP ADRESA WTF:____142.251.37.110
+[DEBUG] BPF filter: ip6 and tcp and src host 142.251.37.110 and dst port 1025
+Cekam do: 1742616695 s, 677521943 ns
+Pocet portu na prozkoumani: 2
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+TADY SNAD JO NE
+[DEBUG] BPF filter: ip6 and tcp and src host 142.251.37.110 and dst port 1025
+Cekam do: 1742616696 s, 710471960 ns
+Pocet portu na prozkoumani: 2
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+142.251.37.110 80 tcp filtered
+142.251.37.110 81 tcp filtered
+IP ADRESA WTF:____142.251.37.110
+[DEBUG] BPF filter: ip6 and tcp and src host 142.251.37.110 and dst port 1025
+Cekam do: 1742616697 s, 750199648 ns
+Pocet portu na prozkoumani: 2
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+TADY SNAD JO NE
+[DEBUG] BPF filter: ip6 and tcp and src host 142.251.37.110 and dst port 1025
+Cekam do: 1742616698 s, 779515301 ns
+Pocet portu na prozkoumani: 2
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+142.251.37.110 80 tcp filtered
+142.251.37.110 81 tcp filtered
+IP ADRESA WTF:____2a00:1450:4014:80f::200e
+[DEBUG] BPF filter: ip6 and tcp and src host 2a00:1450:4014:80f::200e and dst port 1025
+Cekam do: 1742616699 s, 825533332 ns
+Pocet portu na prozkoumani: 2
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+TADY SNAD JO NE
+[DEBUG] BPF filter: ip6 and tcp and src host 2a00:1450:4014:80f::200e and dst port 1025
+Cekam do: 1742616700 s, 867419013 ns
+Pocet portu na prozkoumani: 2
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+2a00:1450:4014:80f::200e 80 tcp filtered
+2a00:1450:4014:80f::200e 81 tcp filtered
+IP ADRESA WTF:____2a00:1450:4014:80f::200e
+[DEBUG] BPF filter: ip6 and tcp and src host 2a00:1450:4014:80f::200e and dst port 1025
+Cekam do: 1742616701 s, 907595550 ns
+Pocet portu na prozkoumani: 2
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+TADY SNAD JO NE
+[DEBUG] BPF filter: ip6 and tcp and src host 2a00:1450:4014:80f::200e and dst port 1025
+Pocet portu na prozkoumani: 2
+Cekam do: 1742616702 s, 943601226 ns
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+2a00:1450:4014:80f::200e 80 tcp filtered
+2a00:1450:4014:80f::200e 81 tcp filtered
+IP ADRESA WTF:____2a00:1450:4014:80f::200e
+[DEBUG] BPF filter: ip6 and tcp and src host 2a00:1450:4014:80f::200e and dst port 1025
+Cekam do: 1742616703 s, 982332026 ns
+Pocet portu na prozkoumani: 2
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+TADY SNAD JO NE
+[DEBUG] BPF filter: ip6 and tcp and src host 2a00:1450:4014:80f::200e and dst port 1025
+Cekam do: 1742616705 s, 16332543 ns
+Pocet portu na prozkoumani: 2
+[DEBUG] Vypršel čas semaforu - ruším pcap_loop
+[DEBUG] TID_SEND joinuty
+[DEBUG] PCAP_LOOP SKONCIL
+pcap_loop terminated by pcap_breakloop()
+[DEBUG] exit captue s pcap_loopem()
+[DEBUG] Vsechny thready spojene!
+=== PCAP STATS ===
+Zachyceno  : 0
+Dropnuto OS: 0
+Dropnuto IF: 0
+2a00:1450:4014:80f::200e 80 tcp filtered
+2a00:1450:4014:80f::200e 81 tcp filtered

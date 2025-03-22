@@ -1,8 +1,47 @@
 #include "utils.h"
+#include "scan_tcp.h"
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
 #include <stdio.h>
+#include <time.h>
+
+// Příklad funkce, která filtruje pole portů, ponechá jen ty s hodnotou stavu FILTERED (2)
+int filter_ports(scan_task_t *task, int *tcp_task_copy_i[]) {
+    printf("TADY SNAD JO NE\n");
+    int count = 0;
+    // Nejprve spočítáme, kolik portů má stav FILTERED
+    for (int i = 0; i < task->num_ports; i++) {
+        if (task->ports[i].state == FILTERED) {
+            count++;
+        }
+    }
+
+    if (count != 0){
+        // Alokujeme nové pole s přesnou velikostí
+        port_scan_result_t *new_ports = malloc(count * sizeof(port_scan_result_t));
+        int *new_copy_i = malloc(count * sizeof(int));
+        if (!new_ports || !new_copy_i) {
+            perror("malloc");
+            return -1;
+        }
+        int j = 0;
+        // Zkopírujeme pouze porty, které mají stav FILTERED
+        for (int i = 0; i < task->num_ports; i++) {
+            if (task->ports[i].state == FILTERED) {
+                new_ports[j] = task->ports[i];
+                new_copy_i[j] = i;
+                j++;
+            }
+        }
+        // Uvolníme původní pole a aktualizujeme task
+        *tcp_task_copy_i = new_copy_i;
+        task->ports = new_ports;
+        task->num_ports = count;
+    }
+    return count;
+}
+
 
 // Výpočet kontrolního součtu podle standardního algoritmu
 unsigned short compute_checksum(unsigned short *ptr, int nbytes) {
@@ -158,4 +197,12 @@ void print_packet_hex(const u_char *packet, int len) {
             printf("\n");
     }
     printf("\n");
+}
+
+
+
+int random2000(void) {
+    srand(time(NULL));  // Inicializace generátoru náhodných čísel
+    int random_number = rand() % 1001;  // Vygeneruje číslo od 0 do 2000 včetně
+    return random_number;
 }
