@@ -5,18 +5,24 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-// Funkce pro vypsání všech aktivních síťových rozhraní (IPv4 i IPv6)
+/* 
+ * list_active_interfaces:
+ * Prints all active network interfaces along with their IPv4/IPv6 addresses.
+ */
 void list_active_interfaces() {
     struct ifaddrs *ifaddr, *ifa;
     char addr[INET6_ADDRSTRLEN];
+
     if (getifaddrs(&ifaddr) == -1) {
         perror("getifaddrs");
         return;
     }
-    printf("Aktivní rozhraní:\n");
+
+    printf("Active interfaces:\n");
     for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
         if (ifa->ifa_addr == NULL)
             continue;
+
         int family = ifa->ifa_addr->sa_family;
         if (family == AF_INET || family == AF_INET6) {
             void *in_addr;
@@ -31,14 +37,20 @@ void list_active_interfaces() {
     freeifaddrs(ifaddr);
 }
 
-// Funkce získá IP adresu pro zadané rozhraní (podle rodiny protokolu)
+/* 
+ * get_interface_address:
+ * Retrieves the IP address for the specified interface and address family.
+ * Returns 0 on success and -1 if no matching address is found.
+ */
 int get_interface_address(const char *iface, int family, char *addr, size_t addr_len) {
     struct ifaddrs *ifaddr, *ifa;
     int found = 0;
+
     if (getifaddrs(&ifaddr) == -1) {
         perror("getifaddrs");
         return -1;
     }
+
     for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
         if (ifa->ifa_addr == NULL)
             continue;
