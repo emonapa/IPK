@@ -23,7 +23,7 @@ unsigned short tcp_checksum_ipv6(const struct ip6_hdr *ip6h,
  * 'orig_index' is set to an array that maps from the new array's index
  * to the original index.
  */
-int filter_ports(scan_task_t *task, int *tcp_task_copy_i[]);
+int filter_ports(scan_task_t *task, int *orig_index[]);
 
 /* Parse comma-separated port ranges (e.g. "80,443,1000-1010"). */
 int parse_port_ranges(const char *port_str, int **ports, int *count);

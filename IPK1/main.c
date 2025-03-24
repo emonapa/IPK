@@ -16,7 +16,7 @@
 
 #define DEFAULT_TIMEOUT 1000
 #define MAX_PORT 65535
-#define CHUNK_SIZE 1000
+#define CHUNK_SIZE 2000
 
 /* Structure for unique source port allocation */
 typedef struct {
@@ -90,7 +90,12 @@ int chunk_send(scan_task_t *orig, int chunk_size, int is_tcp, unique_src_port *u
         scan_task_t *ctask = malloc(sizeof(scan_task_t));
         *ctask = *orig;
         ctask->src_port = get_next_port(uniques_src);
+
+        //If it works, don't touch it...
+        //For some reason, the last packet in chunk is always filtered???
         ctask->num_ports = c;
+        if (i != n-1) ctask->num_ports += 1;
+
         ctask->ports = orig->ports + start;
         
         chunk_tasks[i] = ctask;
@@ -260,16 +265,20 @@ int main(int argc, char *argv[]) {
             scan_task_t filtered_task = base_tcp;
             int filtered_count = filter_ports(&filtered_task, &orig_index);
             if (filtered_count > 0) {
+                fprintf(stderr, "\n");
+
                 chunk_send(&base_tcp, CHUNK_SIZE, 1, &config.unique_src);
                 for (int k = 0; k < filtered_count; k++) {
                     config.tcp_ports_state[orig_index[k]].state = filtered_task.ports[k].state;
                 }
+                free(filtered_task.ports);
+                free(orig_index);
+
                 base_tcp.ports = config.tcp_ports_state;
                 base_tcp.num_ports = config.tcp_count;
             }
-            if (orig_index)
-                free(orig_index);
             
+            fprintf(stderr, "\n");
             /* Print TCP scan results */
             for (int p = 0; p < base_tcp.num_ports; p++) {
                 printf("%s %d tcp ", base_tcp.target_ip, base_tcp.ports[p].port);
@@ -280,6 +289,7 @@ int main(int argc, char *argv[]) {
                     default:       printf("unknown\n");
                 }
             }
+            fprintf(stderr, "------------------------------------------------------------------------------------------------------\n");
         }
     }
     
@@ -292,7 +302,7 @@ int main(int argc, char *argv[]) {
         base_udp.num_ports = config.udp_count;
         for (int i = 0; i < config.ip_count; i++) {
             for (int u = 0; u < base_udp.num_ports; u++) {
-                base_udp.ports[u].state = FILTERED;
+                base_udp.ports[u].state = OPEN;
             }
             strncpy(base_udp.target_ip, config.ips[i].ip, sizeof(base_udp.target_ip) - 1);
             base_udp.is_ipv6 = config.ips[i].is_ipv6;
@@ -309,6 +319,7 @@ int main(int argc, char *argv[]) {
                     default:       printf("unknown\n");
                 }
             }
+            fprintf(stderr, "------------------------------------------------------------------------------------------------------\n");
         }
     }
     

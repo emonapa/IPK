@@ -11,11 +11,51 @@
 #include <arpa/inet.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
-#include <netinet/ip_icmp.h>
+#include <netinet/ip_icmp.h>    
 #include <netinet/ip6.h>
 #include <netinet/icmp6.h>
 #include <semaphore.h>
+#include <ifaddrs.h>
 #include <time.h>
+
+int bet_interface_address(const char *iface, int family, char *address, size_t address_len)
+{
+    struct ifaddrs *ifaddr, *ifa;
+    if (getifaddrs(&ifaddr) == -1) {
+        perror("getifaddrs");
+        return -1;
+    }
+
+    int ret = -1;
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
+            continue;
+
+        if (strcmp(ifa->ifa_name, iface) == 0 && ifa->ifa_addr->sa_family == family) {
+            void *addr_ptr;
+            if (family == AF_INET) {
+                struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
+                addr_ptr = &sa->sin_addr;
+            } else if (family == AF_INET6) {
+                struct sockaddr_in6 *sa6 = (struct sockaddr_in6 *)ifa->ifa_addr;
+                addr_ptr = &sa6->sin6_addr;
+            } else {
+                continue;
+            }
+
+            if (inet_ntop(family, addr_ptr, address, address_len) == NULL) {
+                perror("inet_ntop");
+                ret = -1;
+                break;
+            }
+            ret = 0;
+            break;
+        }
+    }
+
+    freeifaddrs(ifaddr);
+    return ret;
+}
 
 /* Create and activate a pcap handle for UDP scanning */
 pcap_t *create_pcap_handle_udp(const char *interface, char *errbuf) {
@@ -75,7 +115,8 @@ void *send_udp_packets(void *arg) {
             bind_addr6.sin6_family = AF_INET6;
             bind_addr6.sin6_port   = htons(task->src_port);
             inet_pton(AF_INET6, src_ip, &bind_addr6.sin6_addr);
-            /* For link-local addresses, you may need to set sin6_scope_id here */
+
+            /* For link-local addresses, you may need to set sin6_sc_id here */
             if (bind(sockfd, (struct sockaddr*)&bind_addr6, sizeof(bind_addr6)) < 0) {
                 perror("[UDP] bind IPv6");
                 close(sockfd);
@@ -103,6 +144,7 @@ void *send_udp_packets(void *arg) {
             memset(&dst4, 0, sizeof(dst4));
             dst4.sin_family = AF_INET;
             dst4.sin_port   = htons(dst_port);
+            fprintf(stderr, "[UDP] TARGET IP: %s\n", task->target_ip);
             inet_pton(AF_INET, task->target_ip, &dst4.sin_addr);
             ssize_t sent = sendto(sockfd, msg, strlen(msg), 0,
                                   (struct sockaddr*)&dst4, sizeof(dst4));
@@ -113,6 +155,7 @@ void *send_udp_packets(void *arg) {
             memset(&dst6, 0, sizeof(dst6));
             dst6.sin6_family = AF_INET6;
             dst6.sin6_port   = htons(dst_port);
+            fprintf(stderr, "[UDP] TARGET IP: %s\n", task->target_ip);
             inet_pton(AF_INET6, task->target_ip, &dst6.sin6_addr);
             ssize_t sent = sendto(sockfd, msg, strlen(msg), 0,
                                   (struct sockaddr*)&dst6, sizeof(dst6));
@@ -147,16 +190,14 @@ void udp_packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_
                     int port_closed = ntohs(orig_udph->uh_dport);
                     for (int i = 0; i < task->num_ports; i++) {
                         if (task->ports[i].port == port_closed) {
-                            if (task->ports[i].state == FILTERED) {
-                                task->ports[i].state = CLOSED;
-                                pthread_mutex_lock(cap_data->packets_mutex);
-                                task->packets_received++;
-                                if (task->packets_received >= task->num_ports) {
-                                    pcap_breakloop(cap_data->pcap_handle);
-                                    sem_post(cap_data->main_sem);
-                                }
-                                pthread_mutex_unlock(cap_data->packets_mutex);
+                            task->ports[i].state = CLOSED;
+                            pthread_mutex_lock(cap_data->packets_mutex);
+                            task->packets_received++;
+                            if (task->packets_received >= task->num_ports) {
+                                pcap_breakloop(cap_data->pcap_handle);
+                                sem_post(cap_data->main_sem);
                             }
+                            pthread_mutex_unlock(cap_data->packets_mutex);
                             break;
                         }
                     }
@@ -175,16 +216,14 @@ void udp_packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_
                     int port_closed = ntohs(orig_udph->uh_dport);
                     for (int i = 0; i < task->num_ports; i++) {
                         if (task->ports[i].port == port_closed) {
-                            if (task->ports[i].state == FILTERED) {
-                                task->ports[i].state = CLOSED;
-                                pthread_mutex_lock(cap_data->packets_mutex);
-                                task->packets_received++;
-                                if (task->packets_received >= task->num_ports) {
-                                    pcap_breakloop(cap_data->pcap_handle);
-                                    sem_post(cap_data->main_sem);
-                                }
-                                pthread_mutex_unlock(cap_data->packets_mutex);
+                            task->ports[i].state = CLOSED;
+                            pthread_mutex_lock(cap_data->packets_mutex);
+                            task->packets_received++;
+                            if (task->packets_received >= task->num_ports) {
+                                pcap_breakloop(cap_data->pcap_handle);
+                                sem_post(cap_data->main_sem);
                             }
+                            pthread_mutex_unlock(cap_data->packets_mutex);
                             break;
                         }
                     }
@@ -197,13 +236,11 @@ void udp_packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_
 /* Capture thread for UDP ICMP responses */
 void *capture_udp_packets(void *arg) {
     udp_capture_user_data_t *cap_data = (udp_capture_user_data_t *)arg;
-    printf("[UDP] Number of target ports: %d\n", cap_data->task->num_ports);
+    fprintf(stderr, "[UDP] Number of target ports: %d\n", cap_data->task->num_ports);
     int ret = pcap_loop(cap_data->pcap_handle, -1, udp_packet_handler, (u_char *)cap_data);
-    printf("[UDP] pcap_loop ended, ret=%d\n", ret);
     if (ret == PCAP_ERROR)
         fprintf(stderr, "[UDP] pcap_loop error: %s\n", pcap_geterr(cap_data->pcap_handle));
-    else if (ret == PCAP_ERROR_BREAK)
-        printf("[UDP] pcap_loop terminated by pcap_breakloop()\n");
+
     pthread_exit(NULL);
 }
 
@@ -271,13 +308,12 @@ void *udp_scan_thread(void *arg) {
         ts.tv_sec++;
         ts.tv_nsec -= 1000000000L;
     }
-    printf("[UDP] Waiting until: %ld s, %ld ns\n", ts.tv_sec, ts.tv_nsec);
 
     if (sem_timedwait(&main_sem, &ts) != 0) {
         pcap_breakloop(pcap_handle);
-        printf("[UDP] Timeout => pcap_breakloop\n");
+        fprintf(stderr, "[UDP] Timed out, break pcap_loop\n");
     } else {
-        printf("[UDP] All responses arrived (or all ports are CLOSED)\n");
+        fprintf(stderr, "[UDP] All responses arrived (or all ports are CLOSED)\n");
     }
 
     pthread_join(tid_send, NULL);
@@ -286,9 +322,10 @@ void *udp_scan_thread(void *arg) {
     /* Print pcap statistics */
     struct pcap_stat stats;
     if (pcap_stats(pcap_handle, &stats) == 0) {
-        printf("[UDP] Pcap stats: captured=%u, dropped=%u, ifdropped=%u\n",
+        fprintf(stderr, "[UDP] Pcap stats: captured=%u, dropped=%u, ifdropped=%u\n",
                stats.ps_recv, stats.ps_drop, stats.ps_ifdrop);
     }
+    
     pcap_close(pcap_handle);
     sem_destroy(&main_sem);
     pthread_mutex_destroy(&task->packets_mutex);

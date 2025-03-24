@@ -23,8 +23,6 @@
 #include <time.h>
 
 
-
-
 /* Build and send the packet (IPv4 or IPv6) */
 void send_packet(send_packet_params_t *params) {
     scan_task_t *task = params->task;
@@ -143,6 +141,7 @@ void *send_packets(void *arg) {
         dst4->sin_addr.s_addr = inet_addr(task->target_ip);
 
     } else {
+        //IPV6
         struct tcphdr *tcph = (struct tcphdr *)packet_template;
         packet_len = sizeof(struct tcphdr);
 
@@ -251,17 +250,13 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char
 /* Capturing thread */
 void *capture_packets(void *arg) {
     capture_user_data_t *cap_data = (capture_user_data_t *)arg;
-    printf("Number of target ports: %d\n", cap_data->task->num_ports);
+    fprintf(stderr, "[TCP] Number of target ports: %d\n", cap_data->task->num_ports);
 
     /* pcap_loop() blocks until pcap_breakloop() or we have processed enough packets. */
     int ret = pcap_loop(cap_data->pcap_handle, -1, packet_handler, (u_char *)cap_data);
-    printf("[DEBUG] pcap_loop ended\n");
     if (ret == PCAP_ERROR) {
         fprintf(stderr, "pcap_loop error: %s\n", pcap_geterr(cap_data->pcap_handle));
-    } else if (ret == PCAP_ERROR_BREAK) {
-        printf("pcap_loop terminated by pcap_breakloop()\n");
-    }
-    printf("[DEBUG] exiting capture thread\n");
+    }   
     pthread_exit(NULL);
 }
 
@@ -312,7 +307,7 @@ void *tcp_scan_thread(void *arg) {
         snprintf(filter_exp, sizeof(filter_exp),
                  "ip6 and tcp and src host %s and dst port %d", task->target_ip, task->src_port);
     }
-    printf("[DEBUG] BPF filter: %s\n", filter_exp);
+    fprintf(stderr, "[TCP] BPF filter: %s\n", filter_exp);
 
     struct bpf_program fp;
     if (pcap_compile(pcap_handle, &fp, filter_exp, 0, PCAP_NETMASK_UNKNOWN) < 0) {
@@ -326,7 +321,7 @@ void *tcp_scan_thread(void *arg) {
         pcap_close(pcap_handle);
         pthread_exit(NULL);
     }
-    pcap_freecode(&fp);
+    
 
     sem_t main_sem;
     sem_init(&main_sem, 0, 0);
@@ -359,24 +354,31 @@ void *tcp_scan_thread(void *arg) {
         ts.tv_sec ++;
         ts.tv_nsec -= 1000000000L;
     }
-    printf("Waiting until: %ld s, %ld ns\n", ts.tv_sec, ts.tv_nsec);
 
     int ret = sem_timedwait(&main_sem, &ts);
     if (ret != 0) {
         pcap_breakloop(pcap_handle);
-        printf("[DEBUG] Timed out, break pcap_loop\n");
+        fprintf(stderr, "[TCP] Timed out, break pcap_loop\n");
     } else {
-        printf("[DEBUG] All responses arrived.\n");
+        fprintf(stderr, "[TCP] All responses arrived (or all ports are CLOSED)\n");
     }
+
+    //struct pcap_pkthdr *header;
+    //const u_char *pcap_packet;
+    //if (pcap_next_ex(pcap_handle, &header, &pcap_packet) == 1) {
+    //    packet_handler((u_char *)&cap_data, header, pcap_packet);
+    //}
 
     pthread_join(tid_send, NULL);
     pthread_join(tid_capture, NULL);
 
     struct pcap_stat stats;
     if (pcap_stats(pcap_handle, &stats) == 0) {
-        printf("[STATS] Captured: %u, Dropped(OS): %u, Dropped(IF): %u\n",
+        fprintf(stderr, "[STATS] Captured: %u, Dropped(OS): %u, Dropped(IF): %u\n",
                stats.ps_recv, stats.ps_drop, stats.ps_ifdrop);
     }
+    
+    pcap_freecode(&fp);
     pcap_close(pcap_handle);
     sem_destroy(&main_sem);
     pthread_mutex_destroy(&packets_mutex);
