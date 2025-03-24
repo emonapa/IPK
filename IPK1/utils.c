@@ -10,6 +10,12 @@
 #include "utils.h"
 #include "scan_tcp.h"
 
+#define PARSE_PORT_CLEANUP(p, str)  do {                            \
+                                        free(p);                    \
+                                        free(str);                  \
+                                        return -1;                  \
+                                    } while(0)           
+
 /* 
  * filter_ports: keep only ports with state=FILTERED. 
  * Updates 'task->ports' and 'task->num_ports' so that only the FILTERED remain.
@@ -131,39 +137,85 @@ unsigned short tcp_checksum_ipv6(const struct ip6_hdr *ip6h,
     return checksum;
 }
 
-/* Parse port ranges like "80,443,1000-1010". */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+
 int parse_port_ranges(const char *port_str, int **ports, int *count) {
     char *str = strdup(port_str);
-    if (!str)
+    if (!str) {
+        fprintf(stderr, "Memory allocation error\n");
         return -1;
+    }
     int capacity = 10;
     int *p = malloc(capacity * sizeof(int));
-    if (!p) { free(str); return -1; }
+    if (!p) {
+        fprintf(stderr, "Memory allocation error\n");
+        free(str);
+        return -1;
+    }
     int cnt = 0;
-
     char *token = strtok(str, ",");
     while (token) {
         char *dash = strchr(token, '-');
         if (dash) {
             *dash = '\0';
-            int start = atoi(token);
-            int end   = atoi(dash + 1);
-            for (int i = start; i <= end; i++) {
+            char *endptr;
+            errno = 0;
+            long start = strtol(token, &endptr, 10);
+            if (errno != 0 || *endptr != '\0') {
+                fprintf(stderr, "Invalid port number: %s\n", token);
+                PARSE_PORT_CLEANUP(p, str);
+            }
+            errno = 0;
+            long end = strtol(dash + 1, &endptr, 10);
+            if (errno != 0 || *endptr != '\0') {
+                fprintf(stderr, "Invalid port number: %s\n", dash + 1);
+                PARSE_PORT_CLEANUP(p, str);
+            }
+            if (start > end) {
+                fprintf(stderr, "Invalid port range: %ld-%ld\n", start, end);
+                PARSE_PORT_CLEANUP(p, str);
+            }
+            if (start < 0 || end > 65535) {
+                fprintf(stderr, "Port numbers out of range: %ld-%ld\n", start, end);
+                PARSE_PORT_CLEANUP(p, str);
+            }
+            for (long i = start; i <= end; i++) {
                 if (cnt >= capacity) {
                     capacity *= 2;
-                    p = realloc(p, capacity*sizeof(int));
-                    if (!p) { free(str); return -1; }
+                    int *tmp = realloc(p, capacity * sizeof(int));
+                    if (!tmp) {
+                        fprintf(stderr, "Memory allocation error\n");
+                        PARSE_PORT_CLEANUP(p, str);
+                    }
+                    p = tmp;
                 }
-                p[cnt++] = i;
+                p[cnt++] = (int)i;
             }
         } else {
-            int port = atoi(token);
+            char *endptr;
+            errno = 0;
+            long port = strtol(token, &endptr, 10);
+            if (errno != 0 || *endptr != '\0') {
+                fprintf(stderr, "Invalid port number: %s\n", token);
+                PARSE_PORT_CLEANUP(p, str);
+            }
+            if (port < 0 || port > 65535) {
+                fprintf(stderr, "Port number out of range: %ld\n", port);
+                PARSE_PORT_CLEANUP(p, str);
+            }
             if (cnt >= capacity) {
                 capacity *= 2;
-                p = realloc(p, capacity*sizeof(int));
-                if (!p) { free(str); return -1; }
+                int *tmp = realloc(p, capacity * sizeof(int));
+                if (!tmp) {
+                    fprintf(stderr, "Memory allocation error\n");
+                    PARSE_PORT_CLEANUP(p, str);
+                }
+                p = tmp;
             }
-            p[cnt++] = port;
+            p[cnt++] = (int)port;
         }
         token = strtok(NULL, ",");
     }
@@ -172,6 +224,7 @@ int parse_port_ranges(const char *port_str, int **ports, int *count) {
     *count = cnt;
     return 0;
 }
+
 
 /* Debug print of IPv4/ TCP headers. */
 void debug_print_ipv4(const unsigned char *packet, int len) {

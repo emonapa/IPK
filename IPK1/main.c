@@ -14,9 +14,14 @@
 #include "scan_udp.h"
 #include "utils.h"
 
-#define DEFAULT_TIMEOUT 1000
+#define DEFAULT_TIMEOUT 5000
 #define MAX_PORT 65535
 #define CHUNK_SIZE 2000
+
+#define CHECK_MALLOC(ptr)   do {                                                    \
+                                if (ptr == NULL) fprintf(stderr, "Malloc failed");  \
+                            } while(0)
+
 
 /* Structure for unique source port allocation */
 typedef struct {
@@ -55,8 +60,8 @@ typedef struct {
 } scan_config_t;
 
 /* Print usage information */
-static void print_usage(const char *progname) {
-    printf("Usage: %s [-h] -i <interface> [--pt <tcp-ports>] [--pu <udp-ports>] [-w <timeout>] <hostname>\n",
+static void print_usage(FILE *stream, const char *progname) {
+    fprintf(stream, "Usage: %s [-h] -i <interface> [--pt <tcp-ports>] [--pu <udp-ports>] [-w <timeout>] <hostname>\n",
            progname);
 }
 
@@ -83,11 +88,15 @@ int chunk_send(scan_task_t *orig, int chunk_size, int is_tcp, unique_src_port *u
     int n = (orig->num_ports + chunk_size - 1) / chunk_size;
     pthread_t *threads = malloc(n * sizeof(pthread_t));
     scan_task_t **chunk_tasks = malloc(n * sizeof(scan_task_t*));
+    CHECK_MALLOC(threads);
+    CHECK_MALLOC(chunk_tasks);
+
     for (int i = 0; i < n; i++) {
         int start = i * chunk_size;
         int c = (start + chunk_size <= orig->num_ports) ? chunk_size : (orig->num_ports - start);
         
         scan_task_t *ctask = malloc(sizeof(scan_task_t));
+        CHECK_MALLOC(ctask);
         *ctask = *orig;
         ctask->src_port = get_next_port(uniques_src);
 
@@ -134,6 +143,7 @@ IPAddress* resolve_all_ips(const char *hostname, int *count) {
         c++;
     }
     IPAddress *ip_list = malloc(c * sizeof(IPAddress));
+    CHECK_MALLOC(ip_list);
     if (!ip_list) {
         freeaddrinfo(res);
         *count = 0;
@@ -168,27 +178,34 @@ int main(int argc, char *argv[]) {
     sem_init(&config.unique_src.port_sem, 0, 1);
     config.unique_src.current_port = 12345;
     
+    if (argc == 2) {
+        if (strcmp(argv[1], "--interface") == 0) {
+            list_active_interfaces();
+            exit(0);
+        }
+    } else if (argc == 1) {
+        list_active_interfaces();
+        exit(0);
+    }
+
     int opt, option_index = 0;
     static struct option long_opts[] = {
         {"help", no_argument, 0, 'h'},
-        {"interface", no_argument, 0, 'i'},
+        {"interface", required_argument, 0, 'i'},
         {"pt", required_argument, 0, 't'},
         {"pu", required_argument, 0, 'u'},
         {"wait", required_argument, 0, 'w'},
         {0, 0, 0, 0}
     };
     char *tcp_ports_str = NULL, *udp_ports_str = NULL;
-    while ((opt = getopt_long(argc, argv, "h:i:t:u:w:", long_opts, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hi:t:u:w:", long_opts, &option_index)) != -1) {
         switch (opt) {
             case 'h':
-                print_usage(argv[0]);
+                print_usage(stdout, argv[0]);
                 exit(0);
             case 'i':
-                if (!optarg || !strlen(optarg)) {
-                    list_active_interfaces();
-                    exit(0);
-                }
                 strncpy(config.interface, optarg, sizeof(config.interface) - 1);
+                config.interface[sizeof(config.interface) - 1] = '\0';
                 break;
             case 't':
                 tcp_ports_str = strdup(optarg);
@@ -200,12 +217,12 @@ int main(int argc, char *argv[]) {
                 config.timeout = atoi(optarg);
                 break;
             default:
-                print_usage(argv[0]);
+                print_usage(stderr, argv[0]);
                 exit(1);
         }
     }
     if (optind >= argc) {
-        print_usage(argv[0]);
+        print_usage(stderr, argv[0]);
         exit(1);
     }
     strncpy(config.target, argv[optind], sizeof(config.target) - 1);
@@ -220,6 +237,8 @@ int main(int argc, char *argv[]) {
     
     config.tcp_ports_state = malloc(config.tcp_count * sizeof(port_scan_result_t));
     config.udp_ports_state = malloc(config.udp_count * sizeof(port_scan_result_t));
+    CHECK_MALLOC(config.tcp_ports_state);
+    CHECK_MALLOC(config.udp_ports_state);
     
     /* Resolve the target hostname into an array of IPAddress structures */
     config.ips = resolve_all_ips(config.target, &config.ip_count);

@@ -17,45 +17,7 @@
 #include <semaphore.h>
 #include <ifaddrs.h>
 #include <time.h>
-
-int bet_interface_address(const char *iface, int family, char *address, size_t address_len)
-{
-    struct ifaddrs *ifaddr, *ifa;
-    if (getifaddrs(&ifaddr) == -1) {
-        perror("getifaddrs");
-        return -1;
-    }
-
-    int ret = -1;
-    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr == NULL)
-            continue;
-
-        if (strcmp(ifa->ifa_name, iface) == 0 && ifa->ifa_addr->sa_family == family) {
-            void *addr_ptr;
-            if (family == AF_INET) {
-                struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
-                addr_ptr = &sa->sin_addr;
-            } else if (family == AF_INET6) {
-                struct sockaddr_in6 *sa6 = (struct sockaddr_in6 *)ifa->ifa_addr;
-                addr_ptr = &sa6->sin6_addr;
-            } else {
-                continue;
-            }
-
-            if (inet_ntop(family, addr_ptr, address, address_len) == NULL) {
-                perror("inet_ntop");
-                ret = -1;
-                break;
-            }
-            ret = 0;
-            break;
-        }
-    }
-
-    freeifaddrs(ifaddr);
-    return ret;
-}
+#include <net/if.h> 
 
 /* Create and activate a pcap handle for UDP scanning */
 pcap_t *create_pcap_handle_udp(const char *interface, char *errbuf) {
@@ -83,7 +45,6 @@ pcap_t *create_pcap_handle_udp(const char *interface, char *errbuf) {
     return pcap_handle;
 }
 
-/* UDP packet sending function */
 void *send_udp_packets(void *arg) {
     scan_task_t *task = (scan_task_t *)arg;
     int domain = task->is_ipv6 ? AF_INET6 : AF_INET;
@@ -93,11 +54,40 @@ void *send_udp_packets(void *arg) {
         pthread_exit((void*)"error");
     }
 
-    /* Optionally bind to a specified source port */
+    /* Volitelně bind na specifikovaný zdrojový port */
     if (task->src_port > 0) {
         char src_ip[INET6_ADDRSTRLEN] = {0};
-        if (!task->is_ipv6) {
-            get_interface_address(task->interface, AF_INET, src_ip, sizeof(src_ip));
+        if (task->is_ipv6) {
+            /* Získáme zdrojovou IPv6 adresu z rozhraní */
+            if (get_interface_address(task->interface, AF_INET6, src_ip, sizeof(src_ip)) < 0) {
+                fprintf(stderr, "get_interface_address for IPv6 failed\n");
+                close(sockfd);
+                pthread_exit((void*)"error");
+            }
+            /* Nastavíme strukturu sockaddr_in6 */
+            struct sockaddr_in6 bind_addr6;
+            memset(&bind_addr6, 0, sizeof(bind_addr6));
+            bind_addr6.sin6_family = AF_INET6;
+            bind_addr6.sin6_port   = htons(task->src_port);
+            inet_pton(AF_INET6, src_ip, &bind_addr6.sin6_addr);
+
+            /* Pokud se jedná o link-local adresu, nastavíme sin6_scope_id */
+            if (strncmp(src_ip, "fe80", 4) == 0) {
+                bind_addr6.sin6_scope_id = if_nametoindex(task->interface);
+            }
+
+            if (bind(sockfd, (struct sockaddr*)&bind_addr6, sizeof(bind_addr6)) < 0) {
+                perror("[UDP] bind IPv6");
+                close(sockfd);
+                pthread_exit((void*)"error");
+            }
+        } else {
+            /* Pro IPv4 */
+            if (get_interface_address(task->interface, AF_INET, src_ip, sizeof(src_ip)) < 0) {
+                fprintf(stderr, "get_interface_address for IPv4 failed\n");
+                close(sockfd);
+                pthread_exit((void*)"error");
+            }
             struct sockaddr_in bind_addr4;
             memset(&bind_addr4, 0, sizeof(bind_addr4));
             bind_addr4.sin_family = AF_INET;
@@ -108,24 +98,10 @@ void *send_udp_packets(void *arg) {
                 close(sockfd);
                 pthread_exit((void*)"error");
             }
-        } else {
-            get_interface_address(task->interface, AF_INET6, src_ip, sizeof(src_ip));
-            struct sockaddr_in6 bind_addr6;
-            memset(&bind_addr6, 0, sizeof(bind_addr6));
-            bind_addr6.sin6_family = AF_INET6;
-            bind_addr6.sin6_port   = htons(task->src_port);
-            inet_pton(AF_INET6, src_ip, &bind_addr6.sin6_addr);
-
-            /* For link-local addresses, you may need to set sin6_sc_id here */
-            if (bind(sockfd, (struct sockaddr*)&bind_addr6, sizeof(bind_addr6)) < 0) {
-                perror("[UDP] bind IPv6");
-                close(sockfd);
-                pthread_exit((void*)"error");
-            }
         }
     }
 
-    /* Optionally bind the socket to a specific interface */
+    /* Případné navázání na specifické rozhraní */
     if (strlen(task->interface) > 0) {
         if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE,
                        task->interface, strlen(task->interface) + 1) < 0) {
@@ -135,8 +111,8 @@ void *send_udp_packets(void *arg) {
         }
     }
 
-    /* Prepare a simple message and send it to each target port */
-    const char *msg = "Hello from UDP socket!";
+    /* Odeslání zprávy na každý cílový port */
+    const char *msg = "Hiii UDP :3";
     for (int i = 0; i < task->num_ports; i++) {
         int dst_port = task->ports[i].port;
         if (!task->is_ipv6) {
@@ -144,7 +120,6 @@ void *send_udp_packets(void *arg) {
             memset(&dst4, 0, sizeof(dst4));
             dst4.sin_family = AF_INET;
             dst4.sin_port   = htons(dst_port);
-            fprintf(stderr, "[UDP] TARGET IP: %s\n", task->target_ip);
             inet_pton(AF_INET, task->target_ip, &dst4.sin_addr);
             ssize_t sent = sendto(sockfd, msg, strlen(msg), 0,
                                   (struct sockaddr*)&dst4, sizeof(dst4));
@@ -155,8 +130,11 @@ void *send_udp_packets(void *arg) {
             memset(&dst6, 0, sizeof(dst6));
             dst6.sin6_family = AF_INET6;
             dst6.sin6_port   = htons(dst_port);
-            fprintf(stderr, "[UDP] TARGET IP: %s\n", task->target_ip);
             inet_pton(AF_INET6, task->target_ip, &dst6.sin6_addr);
+            /* Pokud je cílová adresa link-local, nastavte také sin6_scope_id */
+            if (strncmp(task->target_ip, "fe80", 4) == 0) {
+                dst6.sin6_scope_id = if_nametoindex(task->interface);
+            }
             ssize_t sent = sendto(sockfd, msg, strlen(msg), 0,
                                   (struct sockaddr*)&dst6, sizeof(dst6));
             if (sent < 0)
@@ -166,6 +144,7 @@ void *send_udp_packets(void *arg) {
     close(sockfd);
     pthread_exit(NULL);
 }
+
 
 /* Callback for pcap_loop: process received ICMP (or ICMPv6) packets */
 void udp_packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char *packet) {
