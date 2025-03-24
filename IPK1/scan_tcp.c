@@ -81,8 +81,7 @@ void send_packet(send_packet_params_t *params) {
 
     /* Actually send out the raw packet */
     if (sendto(sock_send, params->packet, params->packet_len, 0,
-               (struct sockaddr *)&params->dest_addr, params->addr_len) < 0)
-    {
+               (struct sockaddr *)&params->dest_addr, params->addr_len) < 0) {
         perror("sendto");
     }
 
@@ -141,21 +140,35 @@ void *send_packets(void *arg) {
         dst4->sin_addr.s_addr = inet_addr(task->target_ip);
 
     } else {
-        //IPV6
-        struct tcphdr *tcph = (struct tcphdr *)packet_template;
-        packet_len = sizeof(struct tcphdr);
+        // IPv6: sestavíme kompletní IPv6 hlavičku + TCP hlavičku
+        char src_ip6[INET6_ADDRSTRLEN] = "::";
+        if (get_interface_address(task->interface, AF_INET6, src_ip6, sizeof(src_ip6)) < 0) {
+            fprintf(stderr, "get_interface_address for IPv6 failed\n");
+            pthread_exit(NULL);
+        }
+        printf("Original: %s\n", task->target_ip);
+        printf("Special: %s\n", src_ip6);
+        struct ip6_hdr *ip6h = (struct ip6_hdr *)packet_template;
+        memset(ip6h, 0, sizeof(struct ip6_hdr));
+        ip6h->ip6_flow = htonl(6 << 28);           // verze 6, flow=0
+        ip6h->ip6_plen = htons(sizeof(struct tcphdr)); // payload = TCP header
+        ip6h->ip6_nxt  = IPPROTO_TCP;
+        ip6h->ip6_hops = 64;
+        inet_pton(AF_INET6, src_ip6, &ip6h->ip6_src);
+        inet_pton(AF_INET6, task->target_ip, &ip6h->ip6_dst);
 
-        tcph->doff = sizeof(struct tcphdr) / 4;
-        tcph->check = 0;
-        tcph->urg_ptr = 0;
+        // TCP hlavička následuje za IPv6 hlavičkou
+        struct tcphdr *tcph = (struct tcphdr *)(packet_template + sizeof(struct ip6_hdr));
+        memset(tcph, 0, sizeof(struct tcphdr));
+        tcph->source  = htons(task->src_port);
+        tcph->dest    = 0;  /* bude doplněno později */
+        tcph->seq     = htonl(0);
+        tcph->ack_seq = 0;
+        tcph->doff    = sizeof(struct tcphdr) / 4;
+        tcph->syn     = 1;
+        tcph->window  = htons(5840);
 
-        tcph->source   = htons(task->src_port);
-        tcph->dest     = 0; /* filled later */
-        tcph->seq      = htonl(0);
-        tcph->ack_seq  = 0;
-        tcph->doff     = sizeof(struct tcphdr)/4;
-        tcph->syn      = 1;
-        tcph->window   = htons(5840);
+        packet_len = sizeof(struct ip6_hdr) + sizeof(struct tcphdr);
 
         struct sockaddr_in6 *dst6 = (struct sockaddr_in6 *)&dest_addr_template;
         dst6->sin6_family = AF_INET6;

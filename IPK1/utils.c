@@ -6,6 +6,7 @@
 #include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <time.h>
+#include <errno.h>
 
 #include "utils.h"
 #include "scan_tcp.h"
@@ -137,10 +138,6 @@ unsigned short tcp_checksum_ipv6(const struct ip6_hdr *ip6h,
     return checksum;
 }
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
 
 int parse_port_ranges(const char *port_str, int **ports, int *count) {
     char *str = strdup(port_str);
