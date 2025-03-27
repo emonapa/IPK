@@ -31,6 +31,5 @@ int parse_port_ranges(const char *port_str, int **ports, int *count);
 /* Debug functions for printing IPv4/TCP headers, etc. */
 void debug_print_ipv4(const unsigned char *packet, int len);
 void print_packet_hex(const unsigned char *packet, int len);
-int random2000(void);
 
 #endif

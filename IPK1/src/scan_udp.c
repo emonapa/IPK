@@ -50,6 +50,12 @@ pcap_t *create_pcap_handle_udp(const char *interface, char *errbuf) {
     return pcap_handle;
 }
 
+/*
+ * send_udp_packets:
+ * This function sends UDP packets to every destination port specified in the scan task.
+ * It creates a UDP socket (IPv4 or IPv6 depending on the task), binds to a source port if provided,
+ * optionally binds to a specific interface, and then sends a predefined UDP message to each target port.
+ */
 void *send_udp_packets(void *arg) {
     scan_task_t *task = (scan_task_t *)arg;
     int domain = task->is_ipv6 ? AF_INET6 : AF_INET;
@@ -59,35 +65,9 @@ void *send_udp_packets(void *arg) {
         pthread_exit((void*)"error");
     }
 
-    /* Volitelně bind na specifikovaný zdrojový port */
     if (task->src_port > 0) {
         char src_ip[INET6_ADDRSTRLEN] = {0};
-        if (task->is_ipv6) {
-            /* Získáme zdrojovou IPv6 adresu z rozhraní */
-            if (get_interface_address(task->interface, AF_INET6, src_ip, sizeof(src_ip)) < 0) {
-                fprintf(stderr, "get_interface_address for IPv6 failed\n");
-                close(sockfd);
-                pthread_exit((void*)"error");
-            }
-            /* Nastavíme strukturu sockaddr_in6 */
-            struct sockaddr_in6 bind_addr6;
-            memset(&bind_addr6, 0, sizeof(bind_addr6));
-            bind_addr6.sin6_family = AF_INET6;
-            bind_addr6.sin6_port   = htons(task->src_port);
-            inet_pton(AF_INET6, src_ip, &bind_addr6.sin6_addr);
-
-            /* Pokud se jedná o link-local adresu, nastavíme sin6_scope_id */
-            //if (strncmp(src_ip, "fe80", 4) == 0) {
-            //    bind_addr6.sin6_scope_id = if_nametoindex(task->interface);
-            //}
-
-            if (bind(sockfd, (struct sockaddr*)&bind_addr6, sizeof(bind_addr6)) < 0) {
-                perror("[UDP] bind IPv6");
-                close(sockfd);
-                pthread_exit((void*)"error");
-            }
-        } else {
-            /* Pro IPv4 */
+        if (!task->is_ipv6) { // IPv4
             if (get_interface_address(task->interface, AF_INET, src_ip, sizeof(src_ip)) < 0) {
                 fprintf(stderr, "get_interface_address for IPv4 failed\n");
                 close(sockfd);
@@ -103,10 +83,35 @@ void *send_udp_packets(void *arg) {
                 close(sockfd);
                 pthread_exit((void*)"error");
             }
+        } else { // IPv6
+            /* Get IPv6 source address from the interface */
+            if (get_interface_address(task->interface, AF_INET6, src_ip, sizeof(src_ip)) < 0) {
+                fprintf(stderr, "get_interface_address for IPv6 failed\n");
+                close(sockfd);
+                pthread_exit((void*)"error");
+            }
+            
+            /* Set up sockaddr_in6 structure */
+            struct sockaddr_in6 bind_addr6;
+            memset(&bind_addr6, 0, sizeof(bind_addr6));
+            bind_addr6.sin6_family = AF_INET6;
+            bind_addr6.sin6_port   = htons(task->src_port);
+            inet_pton(AF_INET6, src_ip, &bind_addr6.sin6_addr);
+
+            /* If it's a link-local address, then set sin6_scope_id */
+            if (strncmp(src_ip, "fe80", 4) == 0) {
+                bind_addr6.sin6_scope_id = if_nametoindex(task->interface);
+            }
+
+            if (bind(sockfd, (struct sockaddr*)&bind_addr6, sizeof(bind_addr6)) < 0) {
+                perror("[UDP] bind IPv6");
+                close(sockfd);
+                pthread_exit((void*)"error");
+            }
         }
     }
 
-    /* Případné navázání na specifické rozhraní */
+    /* Optionally bind to a specific interface */
     if (strlen(task->interface) > 0) {
         if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE,
                        task->interface, strlen(task->interface) + 1) < 0) {
@@ -116,7 +121,7 @@ void *send_udp_packets(void *arg) {
         }
     }
 
-    /* Odeslání zprávy na každý cílový port */
+    /* Send a message to every destination port */
     const char *msg = "Hiii UDP :3";
     for (int i = 0; i < task->num_ports; i++) {
         int dst_port = task->ports[i].port;
@@ -136,7 +141,7 @@ void *send_udp_packets(void *arg) {
             dst6.sin6_family = AF_INET6;
             dst6.sin6_port   = htons(dst_port);
             inet_pton(AF_INET6, task->target_ip, &dst6.sin6_addr);
-            /* Pokud je cílová adresa link-local, nastavte také sin6_scope_id */
+            /* If the destination address is link-local, set sin6_scope_id as well */
             if (strncmp(task->target_ip, "fe80", 4) == 0) {
                 dst6.sin6_scope_id = if_nametoindex(task->interface);
             }
@@ -150,12 +155,15 @@ void *send_udp_packets(void *arg) {
     pthread_exit(NULL);
 }
 
-
-/* Callback for pcap_loop: process received ICMP (or ICMPv6) packets */
+/*
+ * udp_packet_handler:
+ * Callback for pcap_loop to process received ICMP (or ICMPv6) packets.
+ * This function examines the incoming packet, determines if it contains an ICMP message
+ * indicating an unreachable UDP port, and updates the scan task state accordingly.
+ */
 void udp_packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char *packet) {
     (void)header;
 
-    // Zde namísto udp_capture_user_data_t použijeme capture_user_data_t
     capture_user_data_t *cap_data = (capture_user_data_t *)user;
     scan_task_t *task = cap_data->task;
 
@@ -227,9 +235,13 @@ void udp_packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_
     }
 }
 
-/* Capture thread for UDP ICMP responses */
+/*
+ * capture_udp_packets:
+ * Thread function for capturing UDP ICMP responses.
+ * It runs a pcap_loop to capture ICMP/ICMPv6 packets and processes them using udp_packet_handler.
+ */
 void *capture_udp_packets(void *arg) {
-    // opět použijeme capture_user_data_t místo udp_capture_user_data_t
+    // once again, use capture_user_data_t instead of udp_capture_user_data_t
     capture_user_data_t *cap_data = (capture_user_data_t *)arg;
     fprintf(stderr, "[UDP] Number of target ports: %d\n", cap_data->task->num_ports);
     int ret = pcap_loop(cap_data->pcap_handle, -1, udp_packet_handler, (u_char *)cap_data);
@@ -239,7 +251,12 @@ void *capture_udp_packets(void *arg) {
     pthread_exit(NULL);
 }
 
-/* Main UDP scan thread: sets up pcap, spawns capture and send threads, and waits for responses */
+/*
+ * udp_scan_thread:
+ * Main UDP scan thread that sets up the pcap handle with appropriate filters,
+ * spawns both the capture and send threads, and waits for responses with a timeout.
+ * It then cleans up and prints pcap statistics.
+ */
 void *udp_scan_thread(void *arg) {
     scan_task_t *task = (scan_task_t *)arg;
 
@@ -274,15 +291,13 @@ void *udp_scan_thread(void *arg) {
     sem_t main_sem;
     sem_init(&main_sem, 0, 0);
 
-    // Zde také použijeme capture_user_data_t místo udp_capture_user_data_t
+    /* Create UDP capture handle */
     capture_user_data_t cap_data;
     cap_data.pcap_handle   = pcap_handle;
     cap_data.task          = task;
     cap_data.main_sem      = &main_sem;
     cap_data.packets_mutex = &packets_mutex;
     cap_data.dlt           = pcap_datalink(pcap_handle);
-
-    // Pokud chcete doplnit např. cap_data.dlt = pcap_datalink(pcap_handle); tak zde, ale nic jiného neměníme
 
     pthread_t tid_capture;
     if (pthread_create(&tid_capture, NULL, capture_udp_packets, &cap_data) != 0) {

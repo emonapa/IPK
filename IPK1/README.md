@@ -80,7 +80,7 @@ Následuje ukázková tabulka **třídy ekvivalence** pro *TCP*:
 > **Pozn.:** `UDP porty` je prázdný, protože jde čistě o TCP testy.  
 > ⚠️ Pokud posíláme TCP paket na IPv6 adresu, musíme kontrolovat, aby byl port < 256 (momentálně technické omezení v raw IPv6).
 
-![Ukázka spuštění](ipkCommandTCP.gif)
+![Ukázka spuštění](./doc/ipkCommandTCP.gif)
 
 ### 4.3 UDP testy
 #### Co se testuje a proč
@@ -106,7 +106,7 @@ Tabulka **třídy ekvivalence** pro *UDP*:
 ### 4.4 **Kontrola paměťových úniků pomocí Valgrindu**  
 Součástí testů bylo i spuštění aplikace s **Valgrindem** (přepínače `--leak-check=full --show-leak-kinds=all`), abychom prověřili, zda nedochází k únikům paměti. Záměrně jsme testovali **situaci s předčasným ukončením** skenu (kdy aplikace nezůstane běžet až do konce timeoutu, protože dorazily všechny odpovědi). Ani v těchto případech se **neprokázal** žádný definitivní únik paměti (valgrind hlásil *All heap blocks are freed* / *still reachable*, případně 0 bytes lost).
 
-![Důkaz testování](ipkTestProof.gif)
+![Důkaz testování](./doc/ipkTestProof.gif)
 
 ## 5. **Rozšířená funkcionalita**  
 1. **Chunkování (chunk_send):** rozdělení portů na bloky a paralelní sken ve více vláknech.  

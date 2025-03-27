@@ -146,8 +146,7 @@ void *send_packets(void *arg) {
             fprintf(stderr, "get_interface_address for IPv6 failed\n");
             pthread_exit(NULL);
         }
-        //printf("Original: %s\n", task->target_ip);
-        //printf("Special: %s\n", src_ip6);
+
         struct ip6_hdr *ip6h = (struct ip6_hdr *)packet_template;
         memset(ip6h, 0, sizeof(struct ip6_hdr));
         ip6h->ip6_flow = htonl(6 << 28);           // verze 6, flow=0
@@ -209,7 +208,6 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char
     (void)header;
     capture_user_data_t *cap_data = (capture_user_data_t *)user;
     scan_task_t *task = cap_data->task;
-    //printf("Mam packet pro ip: %s\n", task->target_ip);
 
     int eth_offset;
     switch (cap_data->dlt) {
@@ -243,14 +241,12 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char
             }
         }
     } else {
-        //printf("JSEM IPV6!\n");
         /* IPv6: skip the ip6_hdr, then parse TCP header */
         int ip6_len       = sizeof(struct ip6_hdr);
         struct tcphdr *tcph= (struct tcphdr *)(packet + eth_offset + ip6_len);
         int resp_port     = ntohs(tcph->source);
 
         for (int i = 0; i < task->num_ports; i++) {
-            //printf("task->ports[i].port = %d, resp_port = %d\n", task->ports[i].port, resp_port);
             if (task->ports[i].port == resp_port) {
                 if (tcph->syn && tcph->ack)
                     task->ports[i].state = OPEN;
