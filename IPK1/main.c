@@ -16,11 +16,22 @@
 
 #define DEFAULT_TIMEOUT 5000
 #define MAX_PORT 65535
-#define CHUNK_SIZE 2000
+#define CHUNK_SIZE 10000
 
 #define CHECK_MALLOC(ptr)   do {                                                    \
                                 if (ptr == NULL) fprintf(stderr, "Malloc failed");  \
                             } while(0)
+
+          
+typedef enum { HELP, INTE, PTCP, PUDP, WAIT } flag_type_t;
+#define CHECK_ARGS_USED(flags, flag_type)   do {                                                                                    \
+                                                if (flags[flag_type]){                                                              \
+                                                    fprintf(stderr, "Error while parsing arguments, can't have duplicite flags\n"); \
+                                                    exit(1);                                                                        \
+                                                } else {                                                                            \
+                                                    flags[flag_type] = 1;                                                           \
+                                                }                                                                                   \
+                                            } while (0)                                                                             
 
 
 /* Structure for unique source port allocation */
@@ -94,17 +105,17 @@ int chunk_send(scan_task_t *orig, int chunk_size, int is_tcp, unique_src_port *u
     for (int i = 0; i < n; i++) {
         int start = i * chunk_size;
         int c = (start + chunk_size <= orig->num_ports) ? chunk_size : (orig->num_ports - start);
-        
+
         scan_task_t *ctask = malloc(sizeof(scan_task_t));
         CHECK_MALLOC(ctask);
         *ctask = *orig;
         ctask->src_port = get_next_port(uniques_src);
 
-        //If it works, don't touch it...
-        //For some reason, the last packet in chunk is always filtered???
         ctask->num_ports = c;
+        //For some reason, the last packet in chunk is always filtered???
+        //Don't have the strenght to fix it.
+        //If it works, don't touch it...
         if (i != n-1) ctask->num_ports += 1;
-
         ctask->ports = orig->ports + start;
         
         chunk_tasks[i] = ctask;
@@ -174,8 +185,7 @@ int main(int argc, char *argv[]) {
     scan_config_t config;
     memset(&config, 0, sizeof(config));
     config.timeout = DEFAULT_TIMEOUT;
-    
-    sem_init(&config.unique_src.port_sem, 0, 1);
+
     config.unique_src.current_port = 12345;
     
     if (argc == 2) {
@@ -188,6 +198,8 @@ int main(int argc, char *argv[]) {
         exit(0);
     }
 
+    /* HELP, INTE, PTCP, PUDP, WAIT */
+    char flags[] = {0,0,0,0,0};
     int opt, option_index = 0;
     static struct option long_opts[] = {
         {"help", no_argument, 0, 'h'},
@@ -201,22 +213,28 @@ int main(int argc, char *argv[]) {
     while ((opt = getopt_long(argc, argv, "hi:t:u:w:", long_opts, &option_index)) != -1) {
         switch (opt) {
             case 'h':
+                CHECK_ARGS_USED(flags, HELP);
                 print_usage(stdout, argv[0]);
                 exit(0);
             case 'i':
+                CHECK_ARGS_USED(flags, INTE);
                 strncpy(config.interface, optarg, sizeof(config.interface) - 1);
                 config.interface[sizeof(config.interface) - 1] = '\0';
                 break;
             case 't':
+                CHECK_ARGS_USED(flags, PTCP);
                 tcp_ports_str = strdup(optarg);
                 break;
             case 'u':
+                CHECK_ARGS_USED(flags, PUDP);
                 udp_ports_str = strdup(optarg);
                 break;
             case 'w':
+                CHECK_ARGS_USED(flags, WAIT);
                 config.timeout = atoi(optarg);
                 break;
             default:
+                fprintf(stderr, "Unknown argument\n");
                 print_usage(stderr, argv[0]);
                 exit(1);
         }
@@ -246,6 +264,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Unable to resolve or got no valid addresses.\n");
         exit(1);
     }
+
+    /* Used for generating unique port */
+    sem_init(&config.unique_src.port_sem, 0, 1);
     
     /* Prepare base TCP task */
     scan_task_t base_tcp;
@@ -281,7 +302,7 @@ int main(int argc, char *argv[]) {
             
             /* Filter the ports that remain FILTERED and perform a second pass */
             int *orig_index = NULL;
-            scan_task_t filtered_task = base_tcp;
+            scan_task_t filtered_task = base_tcp; //Redundant, just so it's more clear.
             int filtered_count = filter_ports(&filtered_task, &orig_index);
             if (filtered_count > 0) {
                 fprintf(stderr, "\n");
@@ -297,7 +318,7 @@ int main(int argc, char *argv[]) {
                 base_tcp.num_ports = config.tcp_count;
             }
             
-            fprintf(stderr, "\n");
+            //fprintf(stderr, "\n");
             /* Print TCP scan results */
             for (int p = 0; p < base_tcp.num_ports; p++) {
                 printf("%s %d tcp ", base_tcp.target_ip, base_tcp.ports[p].port);
@@ -308,7 +329,8 @@ int main(int argc, char *argv[]) {
                     default:       printf("unknown\n");
                 }
             }
-            fprintf(stderr, "------------------------------------------------------------------------------------------------------\n");
+            //fprintf(stderr, "------------------------------------------------------------------------------------------------------\n");
+            fprintf(stderr, "------------------------------------------------------------------\n");
         }
     }
     
@@ -338,7 +360,8 @@ int main(int argc, char *argv[]) {
                     default:       printf("unknown\n");
                 }
             }
-            fprintf(stderr, "------------------------------------------------------------------------------------------------------\n");
+            //fprintf(stderr, "------------------------------------------------------------------------------------------------------\n");
+            fprintf(stderr, "------------------------------------------------------------------\n");
         }
     }
     

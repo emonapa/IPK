@@ -24,22 +24,27 @@ pcap_t *create_pcap_handle_udp(const char *interface, char *errbuf) {
     pcap_t *pcap_handle = pcap_create(interface, errbuf);
     if (!pcap_handle) {
         fprintf(stderr, "pcap_create failed: %s\n", errbuf);
+        pcap_close(pcap_handle); 
         pthread_exit((void*)"error");
     }
     if (pcap_set_snaplen(pcap_handle, BUFSIZ) != 0) {
         fprintf(stderr, "pcap_set_snaplen failed\n");
+        pcap_close(pcap_handle); 
         pthread_exit((void*)"error");
     }
     if (pcap_set_promisc(pcap_handle, 1) != 0) {
         fprintf(stderr, "pcap_set_promisc failed\n");
+        pcap_close(pcap_handle); 
         pthread_exit((void*)"error");
     }
     if (pcap_set_timeout(pcap_handle, 50) != 0) {
         fprintf(stderr, "pcap_set_timeout failed\n");
+        pcap_close(pcap_handle); 
         pthread_exit((void*)"error");
     }
     if (pcap_activate(pcap_handle) < 0) {
         fprintf(stderr, "pcap_activate failed: %s\n", pcap_geterr(pcap_handle));
+        pcap_close(pcap_handle); 
         pthread_exit((void*)"error");
     }
     return pcap_handle;
@@ -72,9 +77,9 @@ void *send_udp_packets(void *arg) {
             inet_pton(AF_INET6, src_ip, &bind_addr6.sin6_addr);
 
             /* Pokud se jedná o link-local adresu, nastavíme sin6_scope_id */
-            if (strncmp(src_ip, "fe80", 4) == 0) {
-                bind_addr6.sin6_scope_id = if_nametoindex(task->interface);
-            }
+            //if (strncmp(src_ip, "fe80", 4) == 0) {
+            //    bind_addr6.sin6_scope_id = if_nametoindex(task->interface);
+            //}
 
             if (bind(sockfd, (struct sockaddr*)&bind_addr6, sizeof(bind_addr6)) < 0) {
                 perror("[UDP] bind IPv6");
@@ -149,64 +154,74 @@ void *send_udp_packets(void *arg) {
 /* Callback for pcap_loop: process received ICMP (or ICMPv6) packets */
 void udp_packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char *packet) {
     (void)header;
-    udp_capture_user_data_t *cap_data = (udp_capture_user_data_t *)user;
+
+    // Zde namísto udp_capture_user_data_t použijeme capture_user_data_t
+    capture_user_data_t *cap_data = (capture_user_data_t *)user;
     scan_task_t *task = cap_data->task;
-    int eth_offset = 14;
+
+    int eth_offset;
+    switch (cap_data->dlt) {
+        case DLT_EN10MB: eth_offset = 14; break;
+        case DLT_NULL:eth_offset = 4; break;
+        case DLT_RAW: eth_offset = 0; break;
+        default: eth_offset = 14; break;
+    }
+
     const u_char *ip_payload = packet + eth_offset;
     unsigned char ver = (ip_payload[0] >> 4);
 
     if (ver == 4) {
-        const struct ip *iph = (struct ip *)ip_payload;
+        const struct ip *iph = (const struct ip *)ip_payload;
         int ip_hdr_len = iph->ip_hl * 4;
-        if (iph->ip_p == IPPROTO_ICMP) {
-            const struct icmphdr *icmp4 = (const struct icmphdr *)(ip_payload + ip_hdr_len);
-            if (icmp4->type == ICMP_UNREACH) {
-                const unsigned char *orig_data = (const unsigned char *)icmp4 + 8;
-                const struct ip *orig_iph = (const struct ip *)orig_data;
-                if (orig_iph->ip_p == IPPROTO_UDP) {
-                    int orig_ip_len = orig_iph->ip_hl * 4;
-                    const struct udphdr *orig_udph = (const struct udphdr *)(orig_data + orig_ip_len);
-                    int port_closed = ntohs(orig_udph->uh_dport);
-                    for (int i = 0; i < task->num_ports; i++) {
-                        if (task->ports[i].port == port_closed) {
-                            task->ports[i].state = CLOSED;
-                            pthread_mutex_lock(cap_data->packets_mutex);
-                            task->packets_received++;
-                            if (task->packets_received >= task->num_ports) {
-                                pcap_breakloop(cap_data->pcap_handle);
-                                sem_post(cap_data->main_sem);
-                            }
-                            pthread_mutex_unlock(cap_data->packets_mutex);
-                            break;
-                        }
-                    }
+        if (iph->ip_p != IPPROTO_ICMP) return;
+
+        const struct icmphdr *icmp4 = (const struct icmphdr *)(ip_payload + ip_hdr_len);
+        if (icmp4->type != ICMP_UNREACH) return;
+
+        const unsigned char *orig_data = (const unsigned char *)icmp4 + 8;
+        const struct ip *orig_iph = (const struct ip *)orig_data;
+        if (orig_iph->ip_p != IPPROTO_UDP) return;
+
+        int orig_ip_len = orig_iph->ip_hl * 4;
+        const struct udphdr *orig_udph = (const struct udphdr *)(orig_data + orig_ip_len);
+        int port_closed = ntohs(orig_udph->uh_dport);
+        for (int i = 0; i < task->num_ports; i++) {
+            if (task->ports[i].port == port_closed) {
+                task->ports[i].state = CLOSED;
+                pthread_mutex_lock(cap_data->packets_mutex);
+                task->packets_received++;
+                if (task->packets_received >= task->num_ports) {
+                    pcap_breakloop(cap_data->pcap_handle);
+                    sem_post(cap_data->main_sem);
                 }
+                pthread_mutex_unlock(cap_data->packets_mutex);
+                break;
             }
         }
     } else if (ver == 6) {
         const struct ip6_hdr *ip6h = (const struct ip6_hdr *)ip_payload;
-        if (ip6h->ip6_nxt == IPPROTO_ICMPV6) {
-            const struct icmp6_hdr *icmp6 = (const struct icmp6_hdr *)(ip6h + 1);
-            if (icmp6->icmp6_type == ICMP6_DST_UNREACH) {
-                const unsigned char *orig_data = (const unsigned char *)icmp6 + 8;
-                const struct ip6_hdr *orig_ip6 = (const struct ip6_hdr *)orig_data;
-                if (orig_ip6->ip6_nxt == IPPROTO_UDP) {
-                    const struct udphdr *orig_udph = (const struct udphdr *)(orig_ip6 + 1);
-                    int port_closed = ntohs(orig_udph->uh_dport);
-                    for (int i = 0; i < task->num_ports; i++) {
-                        if (task->ports[i].port == port_closed) {
-                            task->ports[i].state = CLOSED;
-                            pthread_mutex_lock(cap_data->packets_mutex);
-                            task->packets_received++;
-                            if (task->packets_received >= task->num_ports) {
-                                pcap_breakloop(cap_data->pcap_handle);
-                                sem_post(cap_data->main_sem);
-                            }
-                            pthread_mutex_unlock(cap_data->packets_mutex);
-                            break;
-                        }
-                    }
+        if (ip6h->ip6_nxt != IPPROTO_ICMPV6) return;
+
+        const struct icmp6_hdr *icmp6 = (const struct icmp6_hdr *)(ip6h + 1);
+        if (icmp6->icmp6_type != ICMP6_DST_UNREACH) return;
+
+        const unsigned char *orig_data = (const unsigned char *)icmp6 + 8;
+        const struct ip6_hdr *orig_ip6 = (const struct ip6_hdr *)orig_data;
+        if (orig_ip6->ip6_nxt != IPPROTO_UDP) return;
+
+        const struct udphdr *orig_udph = (const struct udphdr *)(orig_ip6 + 1);
+        int port_closed = ntohs(orig_udph->uh_dport);
+        for (int i = 0; i < task->num_ports; i++) {
+            if (task->ports[i].port == port_closed) {
+                task->ports[i].state = CLOSED;
+                pthread_mutex_lock(cap_data->packets_mutex);
+                task->packets_received++;
+                if (task->packets_received >= task->num_ports) {
+                    pcap_breakloop(cap_data->pcap_handle);
+                    sem_post(cap_data->main_sem);
                 }
+                pthread_mutex_unlock(cap_data->packets_mutex);
+                break;
             }
         }
     }
@@ -214,7 +229,8 @@ void udp_packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_
 
 /* Capture thread for UDP ICMP responses */
 void *capture_udp_packets(void *arg) {
-    udp_capture_user_data_t *cap_data = (udp_capture_user_data_t *)arg;
+    // opět použijeme capture_user_data_t místo udp_capture_user_data_t
+    capture_user_data_t *cap_data = (capture_user_data_t *)arg;
     fprintf(stderr, "[UDP] Number of target ports: %d\n", cap_data->task->num_ports);
     int ret = pcap_loop(cap_data->pcap_handle, -1, udp_packet_handler, (u_char *)cap_data);
     if (ret == PCAP_ERROR)
@@ -226,9 +242,6 @@ void *capture_udp_packets(void *arg) {
 /* Main UDP scan thread: sets up pcap, spawns capture and send threads, and waits for responses */
 void *udp_scan_thread(void *arg) {
     scan_task_t *task = (scan_task_t *)arg;
-
-    pthread_mutex_init(&task->packets_mutex, NULL);
-    task->packets_received = 0;
 
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t *pcap_handle = create_pcap_handle_udp(task->interface, errbuf);
@@ -254,14 +267,22 @@ void *udp_scan_thread(void *arg) {
     }
     pcap_freecode(&fp);
 
+    pthread_mutex_t packets_mutex;
+    pthread_mutex_init(&packets_mutex, NULL);
+
     /* Initialize semaphore and spawn capture thread */
     sem_t main_sem;
     sem_init(&main_sem, 0, 0);
-    udp_capture_user_data_t cap_data;
+
+    // Zde také použijeme capture_user_data_t místo udp_capture_user_data_t
+    capture_user_data_t cap_data;
     cap_data.pcap_handle   = pcap_handle;
     cap_data.task          = task;
     cap_data.main_sem      = &main_sem;
-    cap_data.packets_mutex = &task->packets_mutex;
+    cap_data.packets_mutex = &packets_mutex;
+    cap_data.dlt           = pcap_datalink(pcap_handle);
+
+    // Pokud chcete doplnit např. cap_data.dlt = pcap_datalink(pcap_handle); tak zde, ale nic jiného neměníme
 
     pthread_t tid_capture;
     if (pthread_create(&tid_capture, NULL, capture_udp_packets, &cap_data) != 0) {
@@ -307,7 +328,7 @@ void *udp_scan_thread(void *arg) {
     
     pcap_close(pcap_handle);
     sem_destroy(&main_sem);
-    pthread_mutex_destroy(&task->packets_mutex);
+    pthread_mutex_destroy(&packets_mutex);
 
     return NULL;
 }

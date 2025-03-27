@@ -6,7 +6,7 @@
 typedef enum { OPEN, CLOSED, FILTERED } port_state_t;
   
 typedef struct {
-    int port;
+    uint16_t port;
     port_state_t state;
 } port_scan_result_t;
 
@@ -18,9 +18,16 @@ typedef struct {
     port_scan_result_t *ports;   // Každý prvek obsahuje: int port; int state; (OPEN, CLOSED, FILTERED)
     int timeout;                 // Timeout v ms
     int packets_received;        // Počáteční hodnota 0
-    pthread_mutex_t packets_mutex;  // Mutex pro chranu packets_received
     int is_ipv6;                 // 0 = IPv4, 1 = IPv6
-    sem_t *main_sem;             // Ukazatel na hlavní semafor (předáme jej do callbacku)
 } scan_task_t;
+
+/* Callback used by pcap_loop */
+typedef struct {
+    pcap_t *pcap_handle;
+    scan_task_t *task;
+    sem_t *main_sem;
+    pthread_mutex_t *packets_mutex;
+    int dlt;
+} capture_user_data_t;
 
 #endif

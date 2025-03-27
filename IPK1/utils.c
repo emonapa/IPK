@@ -25,29 +25,27 @@
 int filter_ports(scan_task_t *task, int *tcp_task_copy_i[]) {
     int count = 0;
     for (int i = 0; i < task->num_ports; i++) {
+        if (task->ports[i].state == FILTERED) count++;
+    }
+    if (count == 0) return 0;
+
+    port_scan_result_t *new_ports = malloc(count * sizeof(port_scan_result_t));
+    int *new_copy_i = malloc(count * sizeof(int));
+    if (!new_ports || !new_copy_i) {
+        perror("malloc");
+        return -1;
+    }
+    int j = 0;
+    for (int i = 0; i < task->num_ports; i++) {
         if (task->ports[i].state == FILTERED) {
-            count++;
+            new_ports[j] = task->ports[i];
+            new_copy_i[j] = i;
+            j++;
         }
     }
-    if (count != 0) {
-        port_scan_result_t *new_ports = malloc(count * sizeof(port_scan_result_t));
-        int *new_copy_i = malloc(count * sizeof(int));
-        if (!new_ports || !new_copy_i) {
-            perror("malloc");
-            return -1;
-        }
-        int j = 0;
-        for (int i = 0; i < task->num_ports; i++) {
-            if (task->ports[i].state == FILTERED) {
-                new_ports[j] = task->ports[i];
-                new_copy_i[j] = i;
-                j++;
-            }
-        }
-        *tcp_task_copy_i = new_copy_i;
-        task->ports = new_ports;
-        task->num_ports = count;
-    }
+    *tcp_task_copy_i = new_copy_i;
+    task->ports = new_ports;
+    task->num_ports = count;
     return count;
 }
 

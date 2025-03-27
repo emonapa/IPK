@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=gnu99 -Wall -O2
+CFLAGS = -std=gnu17 -Wall -O2
 LIBS = -lpcap -lpthread
 
 SRCS = main.c utils.c interfaces.c scan_tcp.c scan_udp.c

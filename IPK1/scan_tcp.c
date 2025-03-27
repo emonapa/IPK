@@ -146,8 +146,8 @@ void *send_packets(void *arg) {
             fprintf(stderr, "get_interface_address for IPv6 failed\n");
             pthread_exit(NULL);
         }
-        printf("Original: %s\n", task->target_ip);
-        printf("Special: %s\n", src_ip6);
+        //printf("Original: %s\n", task->target_ip);
+        //printf("Special: %s\n", src_ip6);
         struct ip6_hdr *ip6h = (struct ip6_hdr *)packet_template;
         memset(ip6h, 0, sizeof(struct ip6_hdr));
         ip6h->ip6_flow = htonl(6 << 28);           // verze 6, flow=0
@@ -201,13 +201,7 @@ void *send_packets(void *arg) {
     pthread_exit(NULL);
 }
 
-/* Callback used by pcap_loop */
-typedef struct {
-    pcap_t *pcap_handle;
-    scan_task_t *task;
-    sem_t *main_sem;
-    pthread_mutex_t *packets_mutex;
-} capture_user_data_t;
+
 
 /* This handler checks the TCP packet, identifies port from the source field,
    then updates port state in task->ports. */
@@ -215,8 +209,15 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char
     (void)header;
     capture_user_data_t *cap_data = (capture_user_data_t *)user;
     scan_task_t *task = cap_data->task;
+    //printf("Mam packet pro ip: %s\n", task->target_ip);
 
-    int eth_offset = 14; /* typical Ethernet header length */
+    int eth_offset;
+    switch (cap_data->dlt) {
+        case DLT_EN10MB: eth_offset = 14; break;
+        case DLT_NULL:eth_offset = 4; break;
+        case DLT_RAW: eth_offset = 0; break;
+        default: eth_offset = 14; break;
+    }
 
     if (!task->is_ipv6) {
         struct iphdr  *iph = (struct iphdr *)(packet + eth_offset);
@@ -231,39 +232,48 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char
                 } else if (tcph->rst) {
                     task->ports[i].state = CLOSED;
                 }
+                pthread_mutex_lock(cap_data->packets_mutex);
+                task->packets_received++;
+                if (task->packets_received >= task->num_ports) {
+                    pcap_breakloop(cap_data->pcap_handle);
+                    sem_post(cap_data->main_sem);
+                }
+                pthread_mutex_unlock(cap_data->packets_mutex);
                 break;
             }
         }
     } else {
+        //printf("JSEM IPV6!\n");
         /* IPv6: skip the ip6_hdr, then parse TCP header */
         int ip6_len       = sizeof(struct ip6_hdr);
         struct tcphdr *tcph= (struct tcphdr *)(packet + eth_offset + ip6_len);
         int resp_port     = ntohs(tcph->source);
 
         for (int i = 0; i < task->num_ports; i++) {
+            //printf("task->ports[i].port = %d, resp_port = %d\n", task->ports[i].port, resp_port);
             if (task->ports[i].port == resp_port) {
                 if (tcph->syn && tcph->ack)
                     task->ports[i].state = OPEN;
                 else if (tcph->rst)
                     task->ports[i].state = CLOSED;
+
+                pthread_mutex_lock(cap_data->packets_mutex);
+                task->packets_received++;
+                if (task->packets_received >= task->num_ports) {
+                    pcap_breakloop(cap_data->pcap_handle);
+                    sem_post(cap_data->main_sem);
+                }
+                pthread_mutex_unlock(cap_data->packets_mutex);
                 break;
             }
         }
     }
-
-    pthread_mutex_lock(cap_data->packets_mutex);
-    task->packets_received++;
-    if (task->packets_received >= task->num_ports) {
-        pcap_breakloop(cap_data->pcap_handle);
-        sem_post(cap_data->main_sem);
-    }
-    pthread_mutex_unlock(cap_data->packets_mutex);
 }
 
 /* Capturing thread */
 void *capture_packets(void *arg) {
     capture_user_data_t *cap_data = (capture_user_data_t *)arg;
-    fprintf(stderr, "[TCP] Number of target ports: %d\n", cap_data->task->num_ports);
+    //fprintf(stderr, "[TCP] Number of target ports: %d\n", cap_data->task->num_ports);
 
     /* pcap_loop() blocks until pcap_breakloop() or we have processed enough packets. */
     int ret = pcap_loop(cap_data->pcap_handle, -1, packet_handler, (u_char *)cap_data);
@@ -278,22 +288,27 @@ pcap_t *create_pcap_handle(const char *iface, char errbuf[]) {
     pcap_t *pcap_handle = pcap_create(iface, errbuf);
     if (!pcap_handle) {
         fprintf(stderr, "pcap_create failed: %s\n", errbuf);
+        pcap_close(pcap_handle); 
         pthread_exit(NULL);
     }
     if (pcap_set_snaplen(pcap_handle, BUFSIZ) != 0) {
         fprintf(stderr, "pcap_set_snaplen failed\n");
+        pcap_close(pcap_handle); 
         pthread_exit(NULL);
     }
     if (pcap_set_promisc(pcap_handle, 1) != 0) {
         fprintf(stderr, "pcap_set_promisc failed\n");
+        pcap_close(pcap_handle); 
         pthread_exit(NULL);
     }
     if (pcap_set_timeout(pcap_handle, 50) != 0) {
         fprintf(stderr, "pcap_set_timeout failed\n");
+        pcap_close(pcap_handle); 
         pthread_exit(NULL);
     }
     if (pcap_activate(pcap_handle) < 0) {
         fprintf(stderr, "pcap_activate failed: %s\n", pcap_geterr(pcap_handle));
+        pcap_close(pcap_handle); 
         pthread_exit(NULL);
     }
     return pcap_handle;
@@ -303,9 +318,6 @@ pcap_t *create_pcap_handle(const char *iface, char errbuf[]) {
    then spawns two threads: one for capturing packets (pcap_loop), one for sending SYN. */
 void *tcp_scan_thread(void *arg) {
     scan_task_t *task = (scan_task_t *)arg;
-
-    pthread_mutex_t packets_mutex;
-    pthread_mutex_init(&packets_mutex, NULL);
     task->packets_received = 0;
 
     char errbuf[PCAP_ERRBUF_SIZE];
@@ -320,7 +332,7 @@ void *tcp_scan_thread(void *arg) {
         snprintf(filter_exp, sizeof(filter_exp),
                  "ip6 and tcp and src host %s and dst port %d", task->target_ip, task->src_port);
     }
-    fprintf(stderr, "[TCP] BPF filter: %s\n", filter_exp);
+    //fprintf(stderr, "[TCP] BPF filter: %s\n", filter_exp);
 
     struct bpf_program fp;
     if (pcap_compile(pcap_handle, &fp, filter_exp, 0, PCAP_NETMASK_UNKNOWN) < 0) {
@@ -334,8 +346,11 @@ void *tcp_scan_thread(void *arg) {
         pcap_close(pcap_handle);
         pthread_exit(NULL);
     }
-    
+    pcap_freecode(&fp);
 
+    pthread_mutex_t packets_mutex;
+    pthread_mutex_init(&packets_mutex, NULL);
+    
     sem_t main_sem;
     sem_init(&main_sem, 0, 0);
 
@@ -344,6 +359,8 @@ void *tcp_scan_thread(void *arg) {
     cap_data.task          = task;
     cap_data.main_sem      = &main_sem;
     cap_data.packets_mutex = &packets_mutex;
+    cap_data.dlt           = pcap_datalink(pcap_handle);
+
 
     pthread_t tid_capture;
     if (pthread_create(&tid_capture, NULL, capture_packets, &cap_data) != 0) {
@@ -371,16 +388,10 @@ void *tcp_scan_thread(void *arg) {
     int ret = sem_timedwait(&main_sem, &ts);
     if (ret != 0) {
         pcap_breakloop(pcap_handle);
-        fprintf(stderr, "[TCP] Timed out, break pcap_loop\n");
+        fprintf(stdout, "[TCP] Timed out, break pcap_loop\n");
     } else {
         fprintf(stderr, "[TCP] All responses arrived (or all ports are CLOSED)\n");
     }
-
-    //struct pcap_pkthdr *header;
-    //const u_char *pcap_packet;
-    //if (pcap_next_ex(pcap_handle, &header, &pcap_packet) == 1) {
-    //    packet_handler((u_char *)&cap_data, header, pcap_packet);
-    //}
 
     pthread_join(tid_send, NULL);
     pthread_join(tid_capture, NULL);
@@ -390,8 +401,8 @@ void *tcp_scan_thread(void *arg) {
         fprintf(stderr, "[STATS] Captured: %u, Dropped(OS): %u, Dropped(IF): %u\n",
                stats.ps_recv, stats.ps_drop, stats.ps_ifdrop);
     }
+    fprintf(stderr, "[STATS] num of ports: %d, src port: %d\n", task->num_ports, task->src_port);
     
-    pcap_freecode(&fp);
     pcap_close(pcap_handle);
     sem_destroy(&main_sem);
     pthread_mutex_destroy(&packets_mutex);
