@@ -8,7 +8,7 @@
 #include <limits.h>
 #include <semaphore.h>
 #include <pcap.h>
-#include "packet_structures.h"
+#include "l4_scan_types.h"
 
 #define PACKET_SIZE 4096
 

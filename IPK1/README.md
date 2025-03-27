@@ -30,7 +30,7 @@ Projekt se skládá z šesti hlavních souborů:
 5. **`utils.c`**  
    - Pomocné funkce: **výpočet checksumů** (TCP IPv4, TCP IPv6), **parsování portů**, filtrace portů (FILTERED → opakovaný sken), atd.
 
-6. **`packet_structures.h`**  
+6. **`l4_scan_types.h`**  
    - Definuje struktury (`scan_task_t`, `capture_user_data_t`, atd.) s parametry pro sken, seznam portů, semafory apod.
 
 > **Použití**:./ipk-l4-scan {-h} [-i interface | --interface interface] [--pu port-ranges | --pt port-ranges | -u port-ranges | -t port-ranges] {-w timeout} [hostname | ip-address]

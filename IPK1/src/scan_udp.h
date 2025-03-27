@@ -3,7 +3,7 @@
 
 #include <pthread.h>
 #include <pcap.h>
-#include "packet_structures.h"
+#include "l4_scan_types.h"
 
 typedef struct {
     pcap_t *pcap_handle;
