@@ -30,4 +30,15 @@ typedef struct {
     int dlt;
 } capture_user_data_t;
 
+/* cap_data for mutex, task for recevied count*/
+#define RECEVIED_UPDATE(cap_data, task) do {                                                    \
+                                            pthread_mutex_lock(cap_data->packets_mutex);        \
+                                            task->packets_received++;                           \
+                                            if (task->packets_received >= task->num_ports) {    \
+                                                pcap_breakloop(cap_data->pcap_handle);          \
+                                                sem_post(cap_data->main_sem);                   \
+                                            }                                                   \
+                                            pthread_mutex_unlock(cap_data->packets_mutex);      \
+                                        } while(0) 
+
 #endif

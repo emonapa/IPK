@@ -352,9 +352,6 @@ def test_combined_port_ranges():
     for p in [53, 67, 123]:
         assert results.get(p, "CLOSED") == nmap_udp.get(p, "CLOSED")
 
-# --------------------
-# New tests (large number of ports)
-# --------------------
 
 # 31. TCP IPv4 – high number of ports 1-20000 on localhost
 def test_tcp_high_ports_ipv4_localhost():

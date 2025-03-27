@@ -49,7 +49,7 @@ void send_packet(send_packet_params_t *params) {
         }
     }
 
-    /* Optionally bind to a specific interface */
+    /* Bind to a specific interface */
     if (strlen(task->interface) > 0) {
         if (setsockopt(sock_send, SOL_SOCKET, SO_BINDTODEVICE,
                        task->interface, strlen(task->interface) + 1) < 0)
@@ -212,7 +212,7 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char
     int eth_offset;
     switch (cap_data->dlt) {
         case DLT_EN10MB: eth_offset = 14; break;
-        case DLT_NULL:eth_offset = 4; break;
+        case DLT_NULL: eth_offset = 4; break;
         case DLT_RAW: eth_offset = 0; break;
         default: eth_offset = 14; break;
     }
@@ -225,18 +225,12 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char
 
         for (int i = 0; i < task->num_ports; i++) {
             if (task->ports[i].port == resp_port) {
-                if (tcph->syn && tcph->ack) {
+                if (tcph->syn && tcph->ack) 
                     task->ports[i].state = OPEN;
-                } else if (tcph->rst) {
+                else if (tcph->rst) 
                     task->ports[i].state = CLOSED;
-                }
-                pthread_mutex_lock(cap_data->packets_mutex);
-                task->packets_received++;
-                if (task->packets_received >= task->num_ports) {
-                    pcap_breakloop(cap_data->pcap_handle);
-                    sem_post(cap_data->main_sem);
-                }
-                pthread_mutex_unlock(cap_data->packets_mutex);
+                
+                RECEVIED_UPDATE(cap_data, task); //Increments recevied count
                 break;
             }
         }
@@ -253,13 +247,7 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char
                 else if (tcph->rst)
                     task->ports[i].state = CLOSED;
 
-                pthread_mutex_lock(cap_data->packets_mutex);
-                task->packets_received++;
-                if (task->packets_received >= task->num_ports) {
-                    pcap_breakloop(cap_data->pcap_handle);
-                    sem_post(cap_data->main_sem);
-                }
-                pthread_mutex_unlock(cap_data->packets_mutex);
+                RECEVIED_UPDATE(cap_data, task); //Increments recevied count
                 break;
             }
         }
@@ -269,7 +257,6 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_char
 /* Capturing thread */
 void *capture_packets(void *arg) {
     capture_user_data_t *cap_data = (capture_user_data_t *)arg;
-    //fprintf(stderr, "[TCP] Number of target ports: %d\n", cap_data->task->num_ports);
 
     /* pcap_loop() blocks until pcap_breakloop() or we have processed enough packets. */
     int ret = pcap_loop(cap_data->pcap_handle, -1, packet_handler, (u_char *)cap_data);
@@ -316,6 +303,8 @@ void *tcp_scan_thread(void *arg) {
     scan_task_t *task = (scan_task_t *)arg;
     task->packets_received = 0;
 
+
+    /* --------------------------PREPARE PCAP WITH BPF FILTER-------------------------- */    
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t *pcap_handle = create_pcap_handle(task->interface, errbuf);
 
@@ -344,6 +333,8 @@ void *tcp_scan_thread(void *arg) {
     }
     pcap_freecode(&fp);
 
+
+    /* --------------------------MAIN TCP LOGIC-------------------------- */        
     pthread_mutex_t packets_mutex;
     pthread_mutex_init(&packets_mutex, NULL);
     
@@ -389,6 +380,8 @@ void *tcp_scan_thread(void *arg) {
         fprintf(stderr, "[TCP] All responses arrived (or all ports are CLOSED)\n");
     }
 
+
+    /* --------------------------CLEANING AFTER-------------------------- */    
     pthread_join(tid_send, NULL);
     pthread_join(tid_capture, NULL);
 

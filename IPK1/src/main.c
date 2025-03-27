@@ -188,6 +188,8 @@ int main(int argc, char *argv[]) {
 
     config.unique_src.current_port = 12345;
     
+
+    /* --------------------------PARSING OF ARGUMENTS-------------------------- */
     if (argc == 2) {
         if (strcmp(argv[1], "--interface") == 0) {
             list_active_interfaces();
@@ -243,6 +245,9 @@ int main(int argc, char *argv[]) {
         print_usage(stderr, argv[0]);
         exit(1);
     }
+   
+
+    /* --------------------------PREPARING TASK-------------------------- */
     strncpy(config.target, argv[optind], sizeof(config.target) - 1);
     
     if (tcp_ports_str)
@@ -279,7 +284,9 @@ int main(int argc, char *argv[]) {
     memset(&base_udp, 0, sizeof(base_udp));
     strncpy(base_udp.interface, config.interface, sizeof(base_udp.interface));
     base_udp.timeout = config.timeout;
-    
+
+
+    /* --------------------------TCP AND UDP SCAN OF ALL IPS-------------------------- */    
     /* TCP scanning loop for each resolved IP */
     if (config.tcp_count > 0) {
         for (int t = 0; t < config.tcp_count; t++) {

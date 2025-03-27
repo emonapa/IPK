@@ -111,7 +111,7 @@ void *send_udp_packets(void *arg) {
         }
     }
 
-    /* Optionally bind to a specific interface */
+    /* Bind to a specific interface */
     if (strlen(task->interface) > 0) {
         if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE,
                        task->interface, strlen(task->interface) + 1) < 0) {
@@ -196,13 +196,8 @@ void udp_packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_
         for (int i = 0; i < task->num_ports; i++) {
             if (task->ports[i].port == port_closed) {
                 task->ports[i].state = CLOSED;
-                pthread_mutex_lock(cap_data->packets_mutex);
-                task->packets_received++;
-                if (task->packets_received >= task->num_ports) {
-                    pcap_breakloop(cap_data->pcap_handle);
-                    sem_post(cap_data->main_sem);
-                }
-                pthread_mutex_unlock(cap_data->packets_mutex);
+
+                RECEVIED_UPDATE(cap_data, task); //Increments recevied count
                 break;
             }
         }
@@ -222,13 +217,7 @@ void udp_packet_handler(u_char *user, const struct pcap_pkthdr *header, const u_
         for (int i = 0; i < task->num_ports; i++) {
             if (task->ports[i].port == port_closed) {
                 task->ports[i].state = CLOSED;
-                pthread_mutex_lock(cap_data->packets_mutex);
-                task->packets_received++;
-                if (task->packets_received >= task->num_ports) {
-                    pcap_breakloop(cap_data->pcap_handle);
-                    sem_post(cap_data->main_sem);
-                }
-                pthread_mutex_unlock(cap_data->packets_mutex);
+                RECEVIED_UPDATE(cap_data, task); //Increments recevied count
                 break;
             }
         }
@@ -260,6 +249,8 @@ void *capture_udp_packets(void *arg) {
 void *udp_scan_thread(void *arg) {
     scan_task_t *task = (scan_task_t *)arg;
 
+
+    /* --------------------------PREPARE PCAP WITH BPF FILTER-------------------------- */   
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t *pcap_handle = create_pcap_handle_udp(task->interface, errbuf);
     if (!pcap_handle) {
@@ -284,6 +275,8 @@ void *udp_scan_thread(void *arg) {
     }
     pcap_freecode(&fp);
 
+
+    /* --------------------------MAIN UDP LOGIC-------------------------- */     
     pthread_mutex_t packets_mutex;
     pthread_mutex_init(&packets_mutex, NULL);
 
@@ -331,6 +324,8 @@ void *udp_scan_thread(void *arg) {
         fprintf(stderr, "[UDP] All responses arrived (or all ports are CLOSED)\n");
     }
 
+
+    /* --------------------------CLEANING AFTER-------------------------- */  
     pthread_join(tid_send, NULL);
     pthread_join(tid_capture, NULL);
 
